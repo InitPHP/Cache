@@ -1,143 +1,112 @@
 <?php
+
 /**
  * Wincache.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache\Handler;
 
-use InitPHP\Cache\Exception\InvalidArgumentException;
+use DateInterval;
+use InitPHP\Cache\BaseHandler;
 
-use function is_string;
-use function is_int;
-use function extension_loaded;
-use function ini_get;
+use function wincache_ucache_clear;
+use function wincache_ucache_delete;
+use function wincache_ucache_exists;
 use function wincache_ucache_get;
 use function wincache_ucache_set;
-use function wincache_ucache_delete;
-use function wincache_ucache_clear;
-use function wincache_ucache_inc;
-use function wincache_ucache_dec;
 
-class Wincache extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheInterface
+/**
+ * WinCache user-cache handler (Windows + the WinCache extension only).
+ *
+ * @deprecated The WinCache extension is unmaintained and not available for
+ *             PHP 8. The handler is kept for backward compatibility; prefer
+ *             {@see File}, {@see Redis} or {@see Memcache} on modern stacks.
+ *
+ * Options:
+ *  - prefix      (string) Key prefix. Default "cache_".
+ *  - default_ttl (int)    Expiry, in seconds, used when set() is called without
+ *                         a TTL. 0 means "no expiry". Default 0.
+ */
+class Wincache extends BaseHandler
 {
-    /** @var array */
-    protected $_HandlerOption = [
-        'default_ttl'   => 60,
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $handlerOptions = [
+        'default_ttl' => 0,
     ];
 
     /**
      * @inheritDoc
      */
-    public function get($key, $default = null)
+    public function get(string $key, mixed $default = null): mixed
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
         $success = false;
-        $data = wincache_ucache_get($name, $success);
-        return $success ? $data : $this->reDefault($default);
+        $value = wincache_ucache_get($this->name($key), $success);
+
+        return $success ? $value : $default;
     }
 
     /**
      * @inheritDoc
      */
-    public function set($key, $value, $ttl = null)
+    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        $name = $this->name($key);
+        $seconds = $this->ttlToSeconds($ttl);
+        if ($seconds !== null && $seconds <= 0) {
+            return $this->delete($key);
         }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        if(($ttl = $this->ttlCalc($ttl)) === FALSE){
-            return false;
+        if ($seconds === null) {
+            $seconds = $this->optionInt('default_ttl', 0);
         }
-        if($ttl === null){
-            $ttl = $this->getOption('default_ttl', 60);
-        }
-        return (bool)wincache_ucache_set($name, $value, $ttl);
+
+        return wincache_ucache_set($name, $value, $seconds);
     }
 
     /**
      * @inheritDoc
      */
-    public function delete($key)
+    public function delete(string $key): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        $name = $this->name($key);
+        if (!wincache_ucache_exists($name)) {
+            return true;
         }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        return (bool)wincache_ucache_delete($name);
+
+        return wincache_ucache_delete($name);
     }
 
     /**
      * @inheritDoc
      */
-    public function clear()
+    public function clear(): bool
     {
-        return (bool)wincache_ucache_clear();
+        return wincache_ucache_clear();
     }
 
     /**
      * @inheritDoc
      */
-    public function has($key)
+    public function has(string $key): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        $success = false;
-        $data = wincache_ucache_get($name, $success);
-        return $success !== FALSE;
+        return wincache_ucache_exists($this->name($key));
     }
 
     /**
      * @inheritDoc
      */
-    public function increment($name, $offset = 1)
+    public function isSupported(): bool
     {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        $name = $this->getOption('prefix') . $name;
-        $this->validationName($name);
-        return (int)wincache_ucache_inc($name, $offset);
+        return \extension_loaded('wincache') && (bool) \ini_get('wincache.ucenabled');
     }
-
-    /**
-     * @inheritDoc
-     */
-    public function decrement($name, $offset = 1)
-    {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        $name = $this->getOption('prefix') . $name;
-        $this->validationName($name);
-        return (int)wincache_ucache_dec($name, $offset);
-    }
-
-    public function isSupported()
-    {
-        return (extension_loaded('wincache') && ini_get('wincache.ucenabled'));
-    }
-
 }

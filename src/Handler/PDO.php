@@ -1,260 +1,285 @@
 <?php
+
 /**
  * PDO.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache\Handler;
 
+use DateInterval;
+use InitPHP\Cache\BaseHandler;
 use InitPHP\Cache\Exception\CacheException;
-use InitPHP\Cache\Exception\InvalidArgumentException;
+use PDO as PdoConnection;
+use PDOException;
+use PDOStatement;
 
+use function is_numeric;
+use function preg_match;
 use function serialize;
-use function unserialize;
+use function str_replace;
 use function time;
-use function extension_loaded;
-use function is_int;
-use function is_float;
-use function is_string;
+use function unserialize;
 
-class PDO extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheInterface
+/**
+ * Database cache handler backed by PDO.
+ *
+ * Items live in a single table with a unique "name" column, an optional
+ * absolute-expiry "ttl" column and a serialised "data" column. The handler is
+ * portable: driver-specific tuning (MySQL charset/collation) runs only on
+ * MySQL, and all other statements use plain ANSI SQL so SQLite and PostgreSQL
+ * work too.
+ *
+ * Options:
+ *  - prefix    (string)      Key prefix and clear() filter. Default "cache_".
+ *  - dsn       (string)      PDO DSN. Default "mysql:host=localhost;dbname=test".
+ *  - username  (string|null) Connection user.
+ *  - password  (string|null) Connection password.
+ *  - charset   (string)      MySQL only. Default "utf8mb4".
+ *  - collation (string)      MySQL only. Default "utf8mb4_general_ci".
+ *  - table     (string)      Table name (letters, digits, underscores). Default "cache".
+ *
+ * Suggested schema (MySQL):
+ *  CREATE TABLE `cache` (
+ *      `name` VARCHAR(255) NOT NULL,
+ *      `ttl`  INT NULL DEFAULT NULL,
+ *      `data` TEXT NOT NULL,
+ *      UNIQUE (`name`)
+ *  );
+ */
+class PDO extends BaseHandler
 {
-    /** @var array */
-    protected $_HandlerOption = [
-        'dsn'           => 'mysql:host=localhost;dbname=test',
-        'username'      => null,
-        'password'      => null,
-        'charset'       => 'utf8mb4',
-        'collation'     => 'utf8mb4_general_ci',
-        'table'         => 'cache'
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $handlerOptions = [
+        'dsn'       => 'mysql:host=localhost;dbname=test',
+        'username'  => null,
+        'password'  => null,
+        'charset'   => 'utf8mb4',
+        'collation' => 'utf8mb4_general_ci',
+        'table'     => 'cache',
     ];
 
-    /** @var \PDO */
-    protected $pdo;
+    protected ?PdoConnection $pdo = null;
 
     public function __destruct()
     {
-        if(isset($this->pdo)){
-            $this->pdo = null;
-            unset($this->pdo);
+        $this->pdo = null;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function get(string $key, mixed $default = null): mixed
+    {
+        $row = $this->read($key);
+
+        return $row === false ? $default : $row['data'];
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    {
+        $name = $this->name($key);
+        $seconds = $this->ttlToSeconds($ttl);
+        if ($seconds !== null && $seconds <= 0) {
+            return $this->delete($key);
+        }
+        $expiresAt = $seconds === null ? null : time() + $seconds;
+        $table = $this->table();
+
+        $pdo = $this->getPDO();
+        try {
+            $pdo->beginTransaction();
+            $delete = $pdo->prepare('DELETE FROM ' . $table . ' WHERE name = ?');
+            $insert = $pdo->prepare('INSERT INTO ' . $table . ' (name, ttl, data) VALUES (?, ?, ?)');
+            if ($delete === false || $insert === false) {
+                $pdo->rollBack();
+
+                return false;
+            }
+            $delete->execute([$name]);
+            $result = $insert->execute([$name, $expiresAt, serialize($value)]);
+            $pdo->commit();
+
+            return $result;
+        } catch (PDOException) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            return false;
         }
     }
 
     /**
-     * @return \PDO
-     * @throws CacheException
+     * @inheritDoc
      */
-    protected function getPDO()
+    public function delete(string $key): bool
     {
-        if(isset($this->pdo)){
+        return $this->statement('DELETE FROM ' . $this->table() . ' WHERE name = ?', [$this->name($key)]) !== false;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function clear(): bool
+    {
+        $prefix = $this->getOption('prefix', '');
+        $pattern = $this->likePattern(\is_string($prefix) ? $prefix : '');
+        $sql = 'DELETE FROM ' . $this->table() . " WHERE name LIKE ? ESCAPE '\\'";
+
+        return $this->statement($sql, [$pattern]) !== false;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function has(string $key): bool
+    {
+        return $this->read($key) !== false;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function isSupported(): bool
+    {
+        return \extension_loaded('pdo');
+    }
+
+    /**
+     * @return PdoConnection
+     * @throws CacheException If the connection cannot be established.
+     */
+    protected function getPDO(): PdoConnection
+    {
+        if ($this->pdo instanceof PdoConnection) {
             return $this->pdo;
         }
         try {
-            $this->pdo = new \PDO($this->getOption('dsn'),
-                $this->getOption('username'),
-                $this->getOption('password'), [
-                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC
-            ]);
-            $this->pdo->exec("SET NAMES '" . $this->getOption('charset', 'utf8mb4') . "' COLLATE '" . $this->getOption('collation', 'utf8mb4_general_ci') . "'");
-            $this->pdo->exec("SET CHARACTER SET '".$this->getOption('charset', 'utf8mb4')."'");
-        }catch (\PDOException $e) {
-            throw new CacheException('PDO Cache Connection Error : ' . $e->getMessage());
+            $pdo = new PdoConnection(
+                $this->optionString('dsn'),
+                $this->nullableString('username'),
+                $this->nullableString('password'),
+                [
+                    PdoConnection::ATTR_ERRMODE            => PdoConnection::ERRMODE_EXCEPTION,
+                    PdoConnection::ATTR_DEFAULT_FETCH_MODE => PdoConnection::FETCH_ASSOC,
+                ]
+            );
+        } catch (PDOException $e) {
+            throw new CacheException('PDO cache connection error: ' . $e->getMessage(), 0, $e);
         }
-        return $this->pdo;
+        if ($pdo->getAttribute(PdoConnection::ATTR_DRIVER_NAME) === 'mysql') {
+            $charset = $this->optionString('charset', 'utf8mb4');
+            $collation = $this->optionString('collation', 'utf8mb4_general_ci');
+            $pdo->exec("SET NAMES '" . $charset . "' COLLATE '" . $collation . "'");
+        }
+
+        return $this->pdo = $pdo;
     }
 
     /**
-     * @inheritDoc
-     */
-    public function get($key, $default = null)
-    {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(($read = $this->read($key)) === FALSE){
-            return $this->reDefault($default);
-        }
-        return $read['data'];
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function set($key, $value, $ttl = null)
-    {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name, '{}()/\\@\'"');
-        if(($ttl = $this->ttlCalc($ttl)) === FALSE){
-            return false;
-        }
-        if($ttl !== null){
-            $ttl += time();
-        }
-        $sql = 'INSERT INTO ' . $this->getOption("table") . ' ' . ($ttl === null ? '(name, ttl, data) VALUES (?, NULL, ?)' : '(name, ttl, data) VALUES (?, ?, ?)') . ';';
-        $data = [$name];
-        if($ttl !== null){
-            $data[] = $ttl;
-        }
-        $data[] = serialize($value);
-        try {
-            $query = $this->getPDO()->prepare($sql);
-            return (bool)$query->execute($data);
-        }catch (\PDOException $e) {
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function delete($key)
-    {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name, '{}()/\\@\'"');
-        $sql = 'DELETE FROM '.$this->getOption('table').' WHERE name=?;';
-        try {
-            $query = $this->getPDO()->prepare($sql);
-            return (bool)$query->execute([$name]);
-        }catch (\PDOException $e) {
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function clear()
-    {
-        $prefix = $this->getOption('prefix');
-        $table = $this->getOption('table');
-        $sql = 'DELETE FROM ' . $table . ' '
-            . ($prefix === NULL ? 'WHERE 1;' : 'WHERE name LIKE ?');
-        try {
-            $query = $this->getPDO()->prepare($sql);
-            return (bool)($prefix === null ? $query->execute() : $query->execute([$prefix . '%']));
-        }catch (\PDOException $e) {
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function has($key)
-    {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        return $this->read($key) !== FALSE;
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function increment($name, $offset = 1)
-    {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        if(($read = $this->read($name)) === FALSE){
-            return 0;
-        }
-        if(!isset($read['data']) || (!is_int($read['data']) && !is_float($read['data']))){
-            return 0;
-        }
-        $read['data'] += $offset;
-        if($this->update($name, $read['data']) === FALSE){
-            return 0;
-        }
-        return $read['data'];
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function decrement($name, $offset = 1)
-    {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        if(($read = $this->read($name)) === FALSE){
-            return 0;
-        }
-        if(!isset($read['data']) || (!is_int($read['data']) && !is_float($read['data']))){
-            return 0;
-        }
-        $read['data'] -= $offset;
-        if($this->update($name, $read['data']) === FALSE){
-            return 0;
-        }
-        return $read['data'];
-    }
-
-    public function isSupported()
-    {
-        return extension_loaded('pdo');
-    }
-
-    /**
+     * Reads a row, deleting it first when it has expired.
+     *
      * @param string $key
-     * @return false|array
-     * @throws InvalidArgumentException|CacheException
-     */
-    private function read($key)
-    {
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name, '{}()/\\@\'"');
-        try {
-            $query = $this->getPDO()->prepare('SELECT * FROM ' . $this->getOption('table') . ' WHERE name=?');
-            if($query->execute([$name]) === FALSE){
-                return false;
-            }
-            $res = $query->fetch(\PDO::FETCH_ASSOC);
-            if(!empty($res['ttl']) && $res['ttl'] < time()){
-                $this->delete($key);
-                return false;
-            }
-            $res['data'] = unserialize($res['data']);
-            return $res;
-        }catch (\PDOException $e) {
-            return false;
-        }
-    }
-
-    /**
-     * @param string $key
-     * @param mixed $data
-     * @return bool
+     * @return array{ttl: int|null, data: mixed}|false
      * @throws CacheException
      */
-    private function update($key, $data)
+    private function read(string $key): array|false
     {
-        $name = $this->getOption('prefix') . $key;
+        $name = $this->name($key);
+        $statement = $this->statement('SELECT ttl, data FROM ' . $this->table() . ' WHERE name = ?', [$name]);
+        if ($statement === false) {
+            return false;
+        }
+        $row = $statement->fetch(PdoConnection::FETCH_ASSOC);
+        if (!\is_array($row)) {
+            return false;
+        }
+        $expiresAt = is_numeric($row['ttl'] ?? null) ? (int) $row['ttl'] : null;
+        if ($expiresAt !== null && $expiresAt < time()) {
+            $this->delete($key);
+
+            return false;
+        }
+        $data = $row['data'] ?? null;
+
+        return [
+            'ttl'  => $expiresAt,
+            'data' => @unserialize(\is_string($data) ? $data : 'N;'),
+        ];
+    }
+
+    /**
+     * Prepares and executes a statement, returning it on success or false on a
+     * driver error.
+     *
+     * @param string $sql
+     * @param list<mixed> $params
+     * @return PDOStatement|false
+     * @throws CacheException
+     */
+    private function statement(string $sql, array $params = []): PDOStatement|false
+    {
         try {
-            $query = $this->getPDO()->prepare('UPDATE ' . $this->getOption("table") . ' SET data=? WHERE name=?;');
-            return (bool)$query->execute([serialize($data), $name]);
-        }catch (\PDOException $e) {
+            $statement = $this->getPDO()->prepare($sql);
+            if ($statement === false) {
+                return false;
+            }
+
+            return $statement->execute($params) ? $statement : false;
+        } catch (PDOException) {
             return false;
         }
     }
 
+    /**
+     * @return string The validated table name.
+     * @throws CacheException If the option contains anything but [A-Za-z0-9_].
+     */
+    private function table(): string
+    {
+        $table = $this->getOption('table', 'cache');
+        if (!\is_string($table) || preg_match('/^[A-Za-z0-9_]+$/', $table) !== 1) {
+            throw new CacheException('The PDO cache "table" option must contain only letters, digits and underscores.');
+        }
+
+        return $table;
+    }
+
+    /**
+     * Escapes LIKE wildcards in $prefix and appends "%", so a prefix such as
+     * "cache_" matches "cache_*" literally rather than treating "_" as a
+     * single-character wildcard.
+     *
+     * @param string $prefix
+     * @return string
+     */
+    private function likePattern(string $prefix): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $prefix) . '%';
+    }
+
+    /**
+     * @param string $key
+     * @return string|null
+     */
+    private function nullableString(string $key): ?string
+    {
+        $value = $this->getOption($key);
+
+        return \is_scalar($value) ? (string) $value : null;
+    }
 }

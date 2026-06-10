@@ -1,152 +1,120 @@
 <?php
+
 /**
  * Redis.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache\Handler;
 
-use InitPHP\Cache\Exception\InvalidArgumentException;
+use DateInterval;
+use InitPHP\Cache\BaseHandler;
+use InitPHP\Cache\Exception\CacheException;
+use Redis as RedisExtension;
+use RedisException;
 
-use function extension_loaded;
-use function is_string;
-use function is_int;
 use function serialize;
-use function time;
-use function gettype;
 use function unserialize;
 
-class Redis extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheInterface
+/**
+ * Redis cache handler backed by the phpredis ({@see RedisExtension}) extension.
+ *
+ * Every value is stored as a small serialised envelope, so any serialisable
+ * value — including null, false and arrays — round-trips exactly. Expiry is
+ * delegated to Redis via SETEX.
+ *
+ * Options:
+ *  - prefix   (string)      Key prefix. Default "cache_".
+ *  - host     (string)      Server host. Default "127.0.0.1".
+ *  - port     (int)         Server port. Default 6379.
+ *  - timeout  (int|float)   Connection timeout in seconds. Default 0.
+ *  - password (string|null) AUTH password. Default null.
+ *  - database (int|null)    Database index to SELECT. Default 0.
+ */
+class Redis extends BaseHandler
 {
-
-    protected $_HandlerOption = [
-        'host'      => '127.0.0.1',
-        'password'  => null,
-        'port'      => 6379,
-        'timeout'   => 0,
-        'database'  => 0,
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $handlerOptions = [
+        'host'     => '127.0.0.1',
+        'password' => null,
+        'port'     => 6379,
+        'timeout'  => 0,
+        'database' => 0,
     ];
 
-    /** @var \Redis */
-    protected $redis;
+    protected ?RedisExtension $redis = null;
 
     public function __destruct()
     {
-        if(isset($this->redis)){
-            unset($this->redis);
-        }
-    }
-
-    /**
-     * @return \Redis
-     */
-    public function getRedis()
-    {
-        if(isset($this->redis)){
-            return $this->redis;
-        }
-        $this->redis = new \Redis();
-        try {
-            if(!$this->redis->connect($this->getOption('host'), $this->getOption('port'), $this->getOption('timeout'))){
-                throw new \Exception('Redis Cache connection failed.');
+        if ($this->redis instanceof RedisExtension) {
+            try {
+                $this->redis->close();
+            } catch (RedisException) {
+                // The connection is being torn down anyway.
             }
-            $password = $this->getOption('password', null);
-            if($password !== null && !$this->redis->auth($password)){
-                throw new \Exception('Redis Cache authentication failed.');
-            }
-            $database = $this->getOption('database', null);
-            if($database !== null && !$this->redis->select($database)){
-                throw new \Exception('Redis Cache : The database could not be selected.');
-            }
-        }catch (\RedisException $e) {
-            $error = 'A redis exception is caught : ' . $e->getMessage();
-            throw new \RuntimeException($error);
-        }catch (\Exception $e) {
-            throw new \RuntimeException($e->getMessage());
+            $this->redis = null;
         }
-        return $this->redis;
     }
 
     /**
      * @inheritDoc
      */
-    public function get($key, $default = null)
+    public function get(string $key, mixed $default = null): mixed
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        $raw = $this->getRedis()->get($this->name($key));
+        if (!\is_string($raw)) {
+            return $default;
         }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        if(($data = $this->getRedis()->get($name)) !== FALSE){
-            $data = unserialize($data);
-            if(isset($data['__cache_type'], $data['__cache_value'])){
-                return $data['__cache_value'];
-            }
+        $data = @unserialize($raw);
+        if (!\is_array($data) || !\array_key_exists('v', $data)) {
+            return $default;
         }
-        return $this->reDefault($default);
+
+        return $data['v'];
     }
 
     /**
      * @inheritDoc
      */
-    public function set($key, $value, $ttl = null)
+    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        $name = $this->name($key);
+        $seconds = $this->ttlToSeconds($ttl);
+        if ($seconds !== null && $seconds <= 0) {
+            return $this->delete($key);
         }
-        if(($ttl = $this->ttlCalc($ttl)) === FALSE){
-            return false;
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        $type = gettype($value);
-        switch($type){
-            case 'array':
-            case 'object':
-            case 'boolean':
-            case 'integer':
-            case 'double':
-            case 'string':
-            case 'NULL':
-                break;
-            case 'resource':
-            default:
-                return false;
-        }
-        if(!($this->getRedis()->set($name, serialize(['__cache_type' => $type, '__cache_value' => $value])))){
-            return false;
-        }
-        if($ttl !== null){
-            $ttl = time() + $ttl;
-            $this->getRedis()->expireAt($name, $ttl);
-        }
+        $payload = serialize(['v' => $value]);
+        $redis = $this->getRedis();
+
+        return $seconds === null
+            ? $redis->set($name, $payload)
+            : $redis->setex($name, $seconds, $payload);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function delete(string $key): bool
+    {
+        $this->getRedis()->del($this->name($key));
+
         return true;
     }
 
     /**
      * @inheritDoc
      */
-    public function delete($key)
-    {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        return $this->getRedis()->del($name) === 1;
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function clear()
+    public function clear(): bool
     {
         return $this->getRedis()->flushDB();
     }
@@ -154,51 +122,51 @@ class Redis extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheIn
     /**
      * @inheritDoc
      */
-    public function has($key)
+    public function has(string $key): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        return ($this->getRedis()->exists($name) !== FALSE);
+        return $this->getRedis()->exists($this->name($key)) > 0;
     }
 
     /**
      * @inheritDoc
      */
-    public function increment($name, $offset = 1)
+    public function isSupported(): bool
     {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        $name = $this->getOption('prefix') . $name;
-        $this->validationName($name);
-        return $this->getRedis()->incrBy($name, $offset);
+        return \extension_loaded('redis');
     }
 
     /**
-     * @inheritDoc
+     * @return RedisExtension A connected client.
+     * @throws CacheException If the connection, authentication or database
+     *                        selection fails.
      */
-    public function decrement($name, $offset = 1)
+    protected function getRedis(): RedisExtension
     {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        if ($this->redis instanceof RedisExtension) {
+            return $this->redis;
         }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
+        $redis = new RedisExtension();
+        try {
+            $connected = $redis->connect(
+                $this->optionString('host', '127.0.0.1'),
+                $this->optionInt('port', 6379),
+                $this->optionFloat('timeout', 0.0)
+            );
+            if (!$connected) {
+                throw new CacheException('Redis cache connection failed.');
+            }
+            $password = $this->getOption('password');
+            if ($password !== null && !$redis->auth($this->optionString('password'))) {
+                throw new CacheException('Redis cache authentication failed.');
+            }
+            $database = $this->getOption('database');
+            if ($database !== null && !$redis->select($this->optionInt('database'))) {
+                throw new CacheException('Redis cache database could not be selected.');
+            }
+        } catch (RedisException $e) {
+            throw new CacheException('Redis cache error: ' . $e->getMessage(), 0, $e);
         }
-        $name = $this->getOption('prefix') . $name;
-        $this->validationName($name);
-        return $this->getRedis()->incrBy($name, -($offset));
-    }
 
-    public function isSupported()
-    {
-        return extension_loaded('redis');
+        return $this->redis = $redis;
     }
-
 }

@@ -1,190 +1,137 @@
 <?php
+
 /**
  * File.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache\Handler;
 
-use \InitPHP\Cache\Exception\CacheException;
-use \InitPHP\Cache\Exception\InvalidArgumentException;
+use DateInterval;
+use InitPHP\Cache\BaseHandler;
+use InitPHP\Cache\Exception\CacheException;
+
+use function basename;
+use function chmod;
+use function file_get_contents;
+use function file_put_contents;
+use function glob;
+use function is_file;
+use function rtrim;
+use function serialize;
+use function time;
+use function unlink;
+use function unserialize;
 
 use const DIRECTORY_SEPARATOR;
 
-use function ltrim;
-use function rtrim;
-use function file_get_contents;
-use function file_put_contents;
-use function chmod;
-use function is_file;
-use function is_dir;
-use function rmdir;
-use function unlink;
-use function basename;
-use function is_array;
-use function is_string;
-use function is_int;
-use function is_float;
-use function in_array;
-use function glob;
-use function time;
-use function serialize;
-use function unserialize;
-
-class File extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheInterface
+/**
+ * Filesystem cache handler.
+ *
+ * Each item is one PHP-serialised file named "{prefix}{key}" inside the
+ * configured directory.
+ *
+ * Options:
+ *  - prefix (string)      Key prefix and clear() glob filter. Default "cache_".
+ *  - path   (string)      Directory the cache files live in. Required.
+ *  - mode   (int|null)    chmod() mode applied to each file. Default 0640.
+ */
+class File extends BaseHandler
 {
+    /**
+     * Files {@see clear()} never deletes even when they match the prefix glob.
+     *
+     * @var list<string>
+     */
+    private const PROTECTED_FILES = ['.htaccess', 'index.htm', 'index.html', 'index.php', 'web.config'];
 
-    /** @var array */
-    protected $_HandlerOption = [
-        'path'      => null,
-        'mode'      => 0640,
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $handlerOptions = [
+        'path' => null,
+        'mode' => 0640,
     ];
 
     /**
      * @inheritDoc
      */
-    public function get($key, $default = null)
+    public function get(string $key, mixed $default = null): mixed
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        if(($data = $this->read($name)) === FALSE){
-            return $this->reDefault($default);
-        }
-        if(isset($data['data'])){
-            return $data['data'];
-        }
-        return $this->reDefault($default);
+        $data = $this->readByName($this->name($key));
+
+        return $data === false ? $default : $data['data'];
     }
 
     /**
      * @inheritDoc
      */
-    public function set($key, $value, $ttl = null)
+    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
+        $name = $this->name($key);
+        $seconds = $this->ttlToSeconds($ttl);
+        if ($seconds !== null && $seconds <= 0) {
+            return $this->deleteByName($name);
         }
-        if(($ttl = $this->ttlCalc($ttl)) === FALSE){
-            return false;
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        $path = $this->realPath($name);
-        $data = serialize([
-            'time'  => time(),
-            'ttl'   => $ttl,
-            'data'  => $value
+
+        $payload = serialize([
+            'time' => time(),
+            'ttl'  => $seconds,
+            'data' => $value,
         ]);
-        return $this->write($path, $data);
+
+        return $this->write($this->pathByName($name), $payload);
     }
 
     /**
      * @inheritDoc
      */
-    public function delete($key)
+    public function delete(string $key): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        $path = $this->realPath($name);
-        if(!is_file($path)){
+        return $this->deleteByName($this->name($key));
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function clear(): bool
+    {
+        $prefix = $this->getOption('prefix', '');
+        $pattern = $this->directory() . DIRECTORY_SEPARATOR . (\is_string($prefix) ? $prefix : '') . '*';
+        $files = glob($pattern);
+        if ($files === false) {
             return true;
         }
-        return (@unlink($path)) !== FALSE;
-    }
+        foreach ($files as $file) {
+            if (!is_file($file) || \in_array(basename($file), self::PROTECTED_FILES, true)) {
+                continue;
+            }
+            @unlink($file);
+        }
 
-    /**
-     * @inheritDoc
-     */
-    public function clear()
-    {
-        $this->dirClear(null);
         return true;
     }
 
     /**
      * @inheritDoc
      */
-    public function has($key)
+    public function has(string $key): bool
     {
-        if(!is_string($key)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        $name = $this->getOption('prefix') . $key;
-        $this->validationName($name);
-        $read = $this->read($name);
-        return $read !== FALSE;
+        return $this->readByName($this->name($key)) !== false;
     }
 
     /**
      * @inheritDoc
      */
-    public function increment($name, $offset = 1)
-    {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        $name = $this->getOption('prefix', null) . $name;
-        $this->validationName($name);
-        $data = $this->read($name);
-        if($data === FALSE || !isset($data['data'])){
-            return 0;
-        }
-        if(!is_int($data['data']) && !is_float($data['data'])){
-            return 0;
-        }
-        $data['data'] += $offset;
-        $path = $this->realPath($name);
-        if($this->write($path, serialize($data))){
-            return $offset;
-        }
-        return 0;
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function decrement($name, $offset = 1)
-    {
-        if(!is_string($name)){
-            throw new InvalidArgumentException('The requested cache name/key must be a string.');
-        }
-        if(!is_int($offset)){
-            throw new InvalidArgumentException("\$offset must be an integer.");
-        }
-        $name = $this->getOption('prefix', null) . $name;
-        $this->validationName($name);
-        $data = $this->read($name);
-        if($data === FALSE || !isset($data['data'])){
-            return 0;
-        }
-        if(!is_int($data['data']) && !is_float($data['data'])){
-            return 0;
-        }
-        $data['data'] -= $offset;
-        $path = $this->realPath($name);
-        if($this->write($path, serialize($data))){
-            return $offset;
-        }
-        return 0;
-    }
-
-    public function isSupported()
+    public function isSupported(): bool
     {
         return true;
     }
@@ -193,100 +140,96 @@ class File extends \InitPHP\Cache\BaseHandler implements \InitPHP\Cache\CacheInt
      * @param string $path
      * @param string $content
      * @return bool
+     * @throws CacheException
      */
-    private function write($path, $content)
+    private function write(string $path, string $content): bool
     {
-        $write = @file_put_contents($path, $content);
-        if($write !== FALSE){
-            @chmod($path, $this->getOption('mode', 0640));
-            return true;
+        if (@file_put_contents($path, $content) === false) {
+            return false;
         }
-        return false;
+        $mode = $this->getOption('mode', 0640);
+        if (\is_int($mode)) {
+            @chmod($path, $mode);
+        }
+
+        return true;
     }
 
     /**
-     * @param string $name
-     * @return false|array
-     * @throws InvalidArgumentException
+     * Reads and decodes a cache file, deleting it when it has expired.
+     *
+     * @param string $name Prefixed key.
+     * @return array{time: int, ttl: int|null, data: mixed}|false False on a
+     *         miss, an unreadable/corrupt file, or an expired item.
+     * @throws CacheException
      */
-    private function read($name)
+    private function readByName(string $name): array|false
     {
-        $path = $this->realPath($name);
-        if(!is_file($path)){
+        $path = $this->pathByName($name);
+        if (!is_file($path)) {
             return false;
         }
-        if(($read = @file_get_contents($path)) === FALSE){
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
             return false;
         }
-        $data = @unserialize($read);
-        if(!isset($data['ttl']) || !isset($data['time'])){
+        $data = @unserialize($raw);
+        if (
+            !\is_array($data)
+            || !\array_key_exists('ttl', $data)
+            || !\array_key_exists('time', $data)
+            || !\array_key_exists('data', $data)
+        ) {
             return false;
         }
-        if(($data['ttl'] > 0 && time() > $data['time'] + $data['ttl']) || !isset($data['data'])){
-            $this->delete($name);
+        $time = $data['time'];
+        $ttl = $data['ttl'];
+        if ($ttl !== null && \is_int($time) && \is_int($ttl) && time() > ($time + $ttl)) {
+            $this->deleteByName($name);
+
             return false;
         }
+
+        /** @var array{time: int, ttl: int|null, data: mixed} $data */
         return $data;
     }
 
     /**
-     * @param string|null $path
-     * @return void
+     * @param string $name Prefixed key.
+     * @return bool
      * @throws CacheException
      */
-    private function dirClear($path)
+    private function deleteByName(string $name): bool
     {
-        if($path === null){
-            $path = $this->getOption('path', null);
-            if($path === null){
-                throw new CacheException('The caching directory must be defined.');
-            }
-            $path = rtrim($path, '\\/')
-                . DIRECTORY_SEPARATOR
-                . $this->getOption('prefix', null)
-                . '*';
-            $files = glob($path);
-        }elseif(!is_dir($path)){
-            return;
-        }else{
-            $pattern = rtrim($path, '/\\')
-                . DIRECTORY_SEPARATOR
-                . $this->getOption('prefix', '')
-                . '*';
+        $path = $this->pathByName($name);
+        if (!is_file($path)) {
+            return true;
+        }
 
-            $files = glob($pattern);
-        }
-        if(!is_array($files)){
-            return;
-        }
-        foreach ($files as $file) {
-            if(is_dir($file)){
-                $this->dirClear($path);
-                @rmdir($path);
-                continue;
-            }
-            $basename = basename($file);
-            if(in_array($basename, ['.htaccess', 'index.htm', 'index.html', 'index.php', 'web.config'], true)){
-                continue;
-            }
-            @unlink($file);
-        }
+        return @unlink($path);
     }
 
     /**
-     * @param string $name
-     * @return string
+     * @param string $name Prefixed key.
+     * @return string Absolute path of the cache file.
      * @throws CacheException
      */
-    private function realPath($name)
+    private function pathByName(string $name): string
     {
-        $path = $this->getOption('path', null);
-        if($path === null){
-            throw new CacheException('The caching directory must be defined.');
-        }
-        return rtrim($path, '\\/')
-            . DIRECTORY_SEPARATOR
-            . ltrim($name, '\\/');
+        return $this->directory() . DIRECTORY_SEPARATOR . $name;
     }
 
+    /**
+     * @return string The configured cache directory, without a trailing slash.
+     * @throws CacheException If the "path" option is missing or empty.
+     */
+    private function directory(): string
+    {
+        $path = $this->getOption('path');
+        if (!\is_string($path) || $path === '') {
+            throw new CacheException('The File cache handler requires a non-empty "path" option pointing to a writable directory.');
+        }
+
+        return rtrim($path, '\\/');
+    }
 }

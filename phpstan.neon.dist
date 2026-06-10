@@ -1,0 +1,11 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    tmpDir: build/phpstan
+    treatPhpDocTypesAsCertain: false
+    stubFiles:
+        # phpredis (Redis) and memcache/memcached are bundled with PHPStan;
+        # WinCache is not, so we ship a minimal stub for it.
+        - stubs/wincache.stub

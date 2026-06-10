@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.6/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         cacheResultFile=".phpunit.cache/test-results"
+         executionOrder="depends,defects">
+    <testsuites>
+        <testsuite name="InitPHP Cache Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <groups>
+        <!-- Integration tests need live Redis/Memcached servers; run them with
+             "phpunit (dash dash)group integration". -->
+        <exclude>
+            <group>integration</group>
+        </exclude>
+    </groups>
+    <coverage cacheDirectory=".phpunit.cache/code-coverage">
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+    </coverage>
+</phpunit>

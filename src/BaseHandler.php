@@ -1,190 +1,299 @@
 <?php
+
 /**
  * BaseHandler.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache;
 
+use DateInterval;
+use DateTimeImmutable;
 use InitPHP\Cache\Exception\CacheException;
 use InitPHP\Cache\Exception\InvalidArgumentException;
 
-use const CASE_LOWER;
-
-use function array_merge;
 use function array_change_key_case;
-use function is_callable;
-use function call_user_func_array;
-use function is_int;
+use function array_merge;
+use function is_numeric;
+use function strpbrk;
+use function strtolower;
 use function time;
 
+/**
+ * Shared behaviour for every cache handler.
+ *
+ * Concrete handlers implement the storage-specific primitives ({@see get()},
+ * {@see set()}, {@see delete()}, {@see clear()}, {@see has()} and
+ * {@see isSupported()}); this base class provides option handling, PSR-16 key
+ * validation, TTL normalisation, the bulk methods and integer counters.
+ */
 abstract class BaseHandler implements CacheInterface
 {
+    /**
+     * Characters reserved by PSR-16 that must never appear in a cache key.
+     *
+     * @var string
+     */
+    public const RESERVED_CHARACTERS = '{}()/\@:';
 
-    protected $_Options = [
-        'prefix'        => 'cache_',
+    /**
+     * Library-wide default options, applied before any handler defaults.
+     *
+     * @var array<string, mixed>
+     */
+    private const DEFAULT_OPTIONS = [
+        'prefix' => 'cache_',
     ];
 
+    /**
+     * Handler-specific default options. Concrete handlers override this.
+     *
+     * @var array<string, mixed>
+     */
+    protected array $handlerOptions = [];
+
+    /**
+     * The effective options after merging defaults with user input.
+     *
+     * @var array<string, mixed>
+     */
+    protected array $options = [];
+
+    /**
+     * @param array<string, mixed> $options Handler options; keys are matched
+     *                                       case-insensitively.
+     * @throws CacheException If the handler is not supported in this runtime.
+     */
     public function __construct(array $options = [])
     {
-        if($this->isSupported() === FALSE){
-            throw new CacheException('In order to use this caching method, the necessary plugins must be installed/active.');
+        if (!$this->isSupported()) {
+            throw new CacheException(\sprintf(
+                'The "%s" cache handler is not supported in this environment; the required extension is missing or disabled.',
+                static::class
+            ));
         }
-        $this->_Options = array_merge(array_change_key_case($this->_HandlerOption, CASE_LOWER), array_change_key_case($options, CASE_LOWER));
+        $this->options = array_merge(
+            self::DEFAULT_OPTIONS,
+            array_change_key_case($this->handlerOptions),
+            array_change_key_case($options)
+        );
     }
 
-    public function setOptions($options = [])
+    /**
+     * @inheritDoc
+     */
+    public function setOptions(array $options = []): static
     {
-        if(!empty($options)){
-            $this->_Options = array_merge($this->_Options, array_change_key_case($options, CASE_LOWER));
+        if ($options !== []) {
+            $this->options = array_merge($this->options, array_change_key_case($options));
         }
+
         return $this;
     }
 
-    public function getOption($key, $default = null)
+    /**
+     * @inheritDoc
+     */
+    public function getOption(string $key, mixed $default = null): mixed
     {
-        $key = strtolower($key);
-        return isset($this->_Options[$key]) ? $this->_Options[$key] : $default;
-    }
-
-    public function options(array $options = [])
-    {
-        return empty($options) ? $this->_Options : array_merge($this->_Options, array_change_key_case($options, CASE_LOWER));
+        return $this->options[strtolower($key)] ?? $default;
     }
 
     /**
-     * @inheritDoc
+     * Returns an option coerced to int, or $default when it is not numeric.
      */
-    abstract public function get($key, $default = null);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function set($key, $value, $ttl = null);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function delete($key);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function clear();
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function has($key);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function increment($name, $offset = 1);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function decrement($name, $offset = 1);
-
-    /**
-     * @inheritDoc
-     */
-    public function getMultiple($keys, $default = null)
+    protected function optionInt(string $key, int $default = 0): int
     {
-        if(!is_array($keys)){
-            throw new InvalidArgumentException("\$keys must be an array.");
-        }
+        $value = $this->getOption($key);
+
+        return is_numeric($value) ? (int) $value : $default;
+    }
+
+    /**
+     * Returns an option coerced to float, or $default when it is not numeric.
+     */
+    protected function optionFloat(string $key, float $default = 0.0): float
+    {
+        $value = $this->getOption($key);
+
+        return is_numeric($value) ? (float) $value : $default;
+    }
+
+    /**
+     * Returns an option coerced to string, or $default when it is not scalar.
+     */
+    protected function optionString(string $key, string $default = ''): string
+    {
+        $value = $this->getOption($key);
+
+        return \is_scalar($value) ? (string) $value : $default;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function get(string $key, mixed $default = null): mixed;
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool;
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function delete(string $key): bool;
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function clear(): bool;
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function has(string $key): bool;
+
+    /**
+     * @inheritDoc
+     */
+    abstract public function isSupported(): bool;
+
+    /**
+     * @inheritDoc
+     */
+    public function increment(string $key, int $offset = 1): int
+    {
+        $current = $this->get($key);
+        $base = (\is_int($current) || \is_float($current)) ? $current : 0;
+        $new = (int) ($base + $offset);
+        $this->set($key, $new);
+
+        return $new;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function decrement(string $key, int $offset = 1): int
+    {
+        return $this->increment($key, -$offset);
+    }
+
+    /**
+     * @inheritDoc
+     *
+     * @param iterable<string> $keys
+     * @return array<string, mixed>
+     */
+    public function getMultiple(iterable $keys, mixed $default = null): iterable
+    {
         $data = [];
         foreach ($keys as $key) {
             $data[$key] = $this->get($key, $default);
         }
+
         return $data;
     }
 
     /**
      * @inheritDoc
+     *
+     * @param iterable<string, mixed> $values
      */
-    public function setMultiple($values, $ttl = null)
+    public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
     {
-        if(!is_array($values)){
-            throw new InvalidArgumentException("\$values must be an array.");
-        }
-        if(!empty($values)){
-            foreach ($values as $key => $data) {
-                $this->set($key, $data, $ttl);
+        $result = true;
+        foreach ($values as $key => $value) {
+            if (!$this->set((string) $key, $value, $ttl)) {
+                $result = false;
             }
-            return true;
         }
-        return false;
+
+        return $result;
     }
 
     /**
      * @inheritDoc
+     *
+     * @param iterable<string> $keys
      */
-    public function deleteMultiple($keys)
+    public function deleteMultiple(iterable $keys): bool
     {
-        if(!is_array($keys)){
-            throw new InvalidArgumentException("\$keys must be an array.");
-        }
-        if(!empty($keys)){
-            foreach ($keys as $key) {
-                $this->delete($key);
+        $result = true;
+        foreach ($keys as $key) {
+            if (!$this->delete($key)) {
+                $result = false;
             }
-            return true;
         }
-        return false;
+
+        return $result;
     }
 
     /**
-     * @return bool
+     * Validates a user-supplied cache key against the PSR-16 rules.
+     *
+     * @param string $key
+     * @return string The validated key, unchanged.
+     * @throws InvalidArgumentException If the key is empty or reserved.
      */
-    abstract public function isSupported();
-
-    /**
-     * @param string $name
-     * @param string $chars
-     * @return void
-     * @throws InvalidArgumentException
-     */
-    protected function validationName($name, $chars = '{}()/\\@:')
+    protected function validateKey(string $key): string
     {
-        if(strpbrk($name, $chars) !== FALSE){
-            throw new InvalidArgumentException('Cache name cannot contain "' . $chars . '" characters.');
+        if ($key === '') {
+            throw new InvalidArgumentException('The cache key must be a non-empty string.');
         }
+        if (strpbrk($key, self::RESERVED_CHARACTERS) !== false) {
+            throw new InvalidArgumentException(\sprintf(
+                'The cache key "%s" contains a reserved character. The following are reserved: %s',
+                $key,
+                self::RESERVED_CHARACTERS
+            ));
+        }
+
+        return $key;
     }
 
     /**
-     * @param null|int|\DateInterval $ttl
-     * @return null|int|false
+     * Validates $key and returns it prefixed with the configured "prefix"
+     * option, ready to be used as the physical storage key.
+     *
+     * @param string $key
+     * @return string
+     * @throws InvalidArgumentException If the key is empty or reserved.
      */
-    protected function ttlCalc($ttl = null)
+    protected function name(string $key): string
     {
-        if($ttl === null){
-            return $ttl;
+        $prefix = $this->getOption('prefix', '');
+
+        return (\is_string($prefix) ? $prefix : '') . $this->validateKey($key);
+    }
+
+    /**
+     * Normalises a PSR-16 TTL to a number of seconds (or null for "no expiry").
+     *
+     * A {@see DateInterval} is resolved relative to the current time. The result
+     * may be zero or negative, which callers treat as "already expired".
+     *
+     * @param null|int|DateInterval $ttl
+     * @return int|null
+     */
+    protected function ttlToSeconds(null|int|DateInterval $ttl): ?int
+    {
+        if ($ttl === null) {
+            return null;
         }
-        if($ttl instanceof \DateInterval){
-            $ttl = $ttl->format('U') - time();
+        if ($ttl instanceof DateInterval) {
+            return (new DateTimeImmutable())->add($ttl)->getTimestamp() - time();
         }
-        if(!is_int($ttl)){
-            throw new InvalidArgumentException("\$ttl can be an integer, NULL, or a \DateInterval object.");
-        }
-        if($ttl < 0){
-            return false;
-        }
+
         return $ttl;
     }
-
-    protected function reDefault($default = null)
-    {
-        return is_callable($default) ? call_user_func_array($default, []) : $default;
-    }
-
 }

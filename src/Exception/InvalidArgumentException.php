@@ -1,18 +1,30 @@
 <?php
+
 /**
  * InvalidArgumentException.php
  *
- * This file is part of InitPHP.
+ * This file is part of InitPHP Cache.
  *
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 InitPHP
- * @license    http://initphp.github.io/license.txt  MIT
- * @version    0.1
- * @link       https://www.muhammetsafak.com.tr
+ * @license    https://github.com/InitPHP/Cache/blob/main/LICENSE  MIT
+ * @link       https://github.com/InitPHP/Cache
  */
+
+declare(strict_types=1);
 
 namespace InitPHP\Cache\Exception;
 
-class InvalidArgumentException extends \InvalidArgumentException implements \Psr\SimpleCache\InvalidArgumentException
+use InvalidArgumentException as PhpInvalidArgumentException;
+use Psr\SimpleCache\InvalidArgumentException as PsrInvalidArgumentException;
+
+/**
+ * Thrown when a cache key is invalid (empty or containing a character reserved
+ * by PSR-16: {@see \InitPHP\Cache\BaseHandler::RESERVED_CHARACTERS}).
+ *
+ * Extends the SPL {@see PhpInvalidArgumentException} and implements the PSR-16
+ * {@see PsrInvalidArgumentException}, so it can be caught either way.
+ */
+class InvalidArgumentException extends PhpInvalidArgumentException implements PsrInvalidArgumentException
 {
 }
