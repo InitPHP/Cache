@@ -4,6 +4,7 @@ A lightweight [PSR-16 (Simple Cache)](https://www.php-fig.org/psr/psr-16/)
 implementation with interchangeable handlers for the filesystem, PDO databases,
 Redis, Memcache(d) and WinCache.
 
+[![Designed & Maintained with Tan](https://www.muhammetsafak.com.tr/badges/designed-maintained-with-tan.svg)](https://www.muhammetsafak.com.tr/en/tan/)
 [![CI](https://github.com/InitPHP/Cache/actions/workflows/ci.yml/badge.svg)](https://github.com/InitPHP/Cache/actions/workflows/ci.yml)
 [![Latest Stable Version](http://poser.pugx.org/initphp/cache/v)](https://packagist.org/packages/initphp/cache) [![Total Downloads](http://poser.pugx.org/initphp/cache/downloads)](https://packagist.org/packages/initphp/cache) [![License](http://poser.pugx.org/initphp/cache/license)](https://packagist.org/packages/initphp/cache) [![PHP Version Require](http://poser.pugx.org/initphp/cache/require/php)](https://packagist.org/packages/initphp/cache)
 
