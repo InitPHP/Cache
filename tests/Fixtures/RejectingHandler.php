@@ -18,7 +18,7 @@ final class RejectingHandler extends BaseHandler
         return $default;
     }
 
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool
     {
         return false;
     }

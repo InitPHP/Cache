@@ -29,13 +29,13 @@
         "docs": "https://github.com/InitPHP/Cache/tree/main/docs"
     },
     "require": {
-        "php": ">=8.0",
+        "php": "^8.2",
         "psr/simple-cache": "^3.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.6",
         "phpstan/phpstan": "^1.12 || ^2.1",
-        "friendsofphp/php-cs-fixer": "^3.65"
+        "friendsofphp/php-cs-fixer": "^3.95"
     },
     "suggest": {
         "ext-pdo": "To use the PDO handler.",

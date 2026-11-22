@@ -25,6 +25,4 @@ use Psr\SimpleCache\InvalidArgumentException as PsrInvalidArgumentException;
  * Extends the SPL {@see PhpInvalidArgumentException} and implements the PSR-16
  * {@see PsrInvalidArgumentException}, so it can be caught either way.
  */
-class InvalidArgumentException extends PhpInvalidArgumentException implements PsrInvalidArgumentException
-{
-}
+class InvalidArgumentException extends PhpInvalidArgumentException implements PsrInvalidArgumentException {}

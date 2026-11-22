@@ -10,7 +10,7 @@ Redis, Memcache(d) and WinCache.
 
 ## Requirements
 
-- PHP 8.0 or higher
+- PHP 8.2 or higher
 - [`psr/simple-cache`](https://packagist.org/packages/psr/simple-cache) `^3.0`
 
 Each handler may need its own PHP extension:
@@ -122,7 +122,7 @@ configuration and the exact semantics of TTLs, keys and counters.
 ## Contributing
 
 Bug reports and pull requests are welcome. CI runs PHP-CS-Fixer, PHPStan (max
-level) and PHPUnit across PHP 8.0–8.4, plus a Redis/Memcached integration job.
+level) and PHPUnit across PHP 8.2–8.5, plus a Redis/Memcached integration job.
 Run the same static bundle locally with:
 
 ```bash
