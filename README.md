@@ -91,7 +91,7 @@ $cache->get('user:42');
 | `increment(string $key, int $offset = 1)` | `int` | Add to a counter and return the new value. |
 | `decrement(string $key, int $offset = 1)` | `int` | Subtract from a counter and return the new value. |
 
-See [`docs/`](docs/README.md) for the full guide, including per-handler
+See [`docs/`](docs/Home.md) for the full guide, including per-handler
 configuration and the exact semantics of TTLs, keys and counters.
 
 ## Notes
@@ -100,24 +100,30 @@ configuration and the exact semantics of TTLs, keys and counters.
   `DateInterval` sets a lifetime; a zero or negative TTL deletes the item.
 - **Keys:** any non-empty string that does not contain the PSR-16 reserved
   characters `{}()/\@:`. An invalid key throws an
-  [`InvalidArgumentException`](docs/exceptions.md).
-- **Counters:** `increment()`/`decrement()` treat a missing or non-numeric item
-  as `0` and store the result without an expiry. They behave identically across
+  [`InvalidArgumentException`](docs/Error-Handling.md).
+- **Counters:** `increment()`/`decrement()` treat a missing item, or one that is not an
+  `int` or `float`, as `0` and store the result without an expiry. They behave identically across
   every handler.
 - **Values:** anything `serialize()` can handle round-trips exactly — including
   `null`, `false` and objects.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Configuration & options](docs/configuration.md)
-- [PSR-16 behaviour & the handler API](docs/psr-16.md)
-- Handlers: [File](docs/file-handler.md) ·
-  [PDO](docs/pdo-handler.md) ·
-  [Redis](docs/redis-handler.md) ·
-  [Memcache(d)](docs/memcache-handler.md) ·
-  [WinCache](docs/wincache-handler.md)
-- [Exceptions](docs/exceptions.md)
+- [Home](docs/Home.md)
+- [Installation](docs/Installation.md) · [Quick Start](docs/Quick-Start.md)
+- [The Cache Factory](docs/The-Cache-Factory.md)
+- [Keys, TTL & Values](docs/Keys-TTL-and-Values.md) ·
+  [Counters](docs/Counters.md) ·
+  [Bulk Operations](docs/Bulk-Operations.md)
+- [Configuration Options](docs/Configuration-Options.md)
+- Handlers: [File](docs/File-Handler.md) ·
+  [PDO](docs/PDO-Handler.md) ·
+  [Redis](docs/Redis-Handler.md) ·
+  [Memcache(d)](docs/Memcache-Handler.md) ·
+  [WinCache](docs/WinCache-Handler.md)
+- [Error Handling](docs/Error-Handling.md) · [API Reference](docs/API-Reference.md)
+- [Recipes](docs/Recipes.md) · [Custom Handlers](docs/Custom-Handlers.md) · [Testing](docs/Testing.md)
+- [FAQ](docs/FAQ.md) · [Troubleshooting](docs/Troubleshooting.md)
 
 ## Contributing
 
