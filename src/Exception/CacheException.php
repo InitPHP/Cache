@@ -25,6 +25,4 @@ use Psr\SimpleCache\CacheException as PsrCacheException;
  * Implements {@see PsrCacheException} so that, per PSR-16, every exception the
  * library throws can be caught through the PSR interface.
  */
-class CacheException extends Exception implements PsrCacheException
-{
-}
+class CacheException extends Exception implements PsrCacheException {}

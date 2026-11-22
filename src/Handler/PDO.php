@@ -89,7 +89,7 @@ class PDO extends BaseHandler
     /**
      * @inheritDoc
      */
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool
     {
         $name = $this->name($key);
         $seconds = $this->ttlToSeconds($ttl);
@@ -176,7 +176,7 @@ class PDO extends BaseHandler
                 [
                     PdoConnection::ATTR_ERRMODE            => PdoConnection::ERRMODE_EXCEPTION,
                     PdoConnection::ATTR_DEFAULT_FETCH_MODE => PdoConnection::FETCH_ASSOC,
-                ]
+                ],
             );
         } catch (PDOException $e) {
             throw new CacheException('PDO cache connection error: ' . $e->getMessage(), 0, $e);

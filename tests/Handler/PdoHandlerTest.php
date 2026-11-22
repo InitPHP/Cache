@@ -30,7 +30,7 @@ final class PdoHandlerTest extends AbstractCacheContractTestCase
         $this->raw = new PDO('sqlite:' . $this->dbFile);
         $this->raw->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->raw->exec(
-            'CREATE TABLE cache (name VARCHAR(255) NOT NULL, ttl INTEGER NULL DEFAULT NULL, data TEXT NOT NULL, UNIQUE(name))'
+            'CREATE TABLE cache (name VARCHAR(255) NOT NULL, ttl INTEGER NULL DEFAULT NULL, data TEXT NOT NULL, UNIQUE(name))',
         );
         parent::setUp();
     }
@@ -65,7 +65,7 @@ final class PdoHandlerTest extends AbstractCacheContractTestCase
     public function testExpiredRowIsTreatedAsMissAndDeleted(): void
     {
         $this->raw->exec(
-            "INSERT INTO cache (name, ttl, data) VALUES ('cache_old', " . (time() - 60) . ", '" . serialize('v') . "')"
+            "INSERT INTO cache (name, ttl, data) VALUES ('cache_old', " . (time() - 60) . ", '" . serialize('v') . "')",
         );
 
         self::assertNull($this->cache->get('old'));

@@ -86,7 +86,7 @@ class Redis extends BaseHandler
     /**
      * @inheritDoc
      */
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool
     {
         $name = $this->name($key);
         $seconds = $this->ttlToSeconds($ttl);
@@ -150,7 +150,7 @@ class Redis extends BaseHandler
             $connected = $redis->connect(
                 $this->optionString('host', '127.0.0.1'),
                 $this->optionInt('port', 6379),
-                $this->optionFloat('timeout', 0.0)
+                $this->optionFloat('timeout', 0.0),
             );
             if (!$connected) {
                 throw new CacheException('Redis cache connection failed.');

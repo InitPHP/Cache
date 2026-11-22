@@ -18,7 +18,7 @@ final class ProbeHandler extends BaseHandler
         return $default;
     }
 
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool
     {
         return true;
     }
@@ -48,7 +48,7 @@ final class ProbeHandler extends BaseHandler
         return $this->name($key);
     }
 
-    public function exposeTtlToSeconds(null|int|DateInterval $ttl): ?int
+    public function exposeTtlToSeconds(int|DateInterval|null $ttl): ?int
     {
         return $this->ttlToSeconds($ttl);
     }

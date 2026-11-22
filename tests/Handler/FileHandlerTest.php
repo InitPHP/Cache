@@ -27,7 +27,7 @@ final class FileHandlerTest extends AbstractCacheContractTestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/initphp-cache-' . uniqid('', true);
-        mkdir($this->dir, 0777, true);
+        mkdir($this->dir, 0o777, true);
         parent::setUp();
     }
 

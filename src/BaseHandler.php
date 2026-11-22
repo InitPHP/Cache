@@ -77,13 +77,13 @@ abstract class BaseHandler implements CacheInterface
         if (!$this->isSupported()) {
             throw new CacheException(\sprintf(
                 'The "%s" cache handler is not supported in this environment; the required extension is missing or disabled.',
-                static::class
+                static::class,
             ));
         }
         $this->options = array_merge(
             self::DEFAULT_OPTIONS,
             array_change_key_case($this->handlerOptions),
-            array_change_key_case($options)
+            array_change_key_case($options),
         );
     }
 
@@ -145,7 +145,7 @@ abstract class BaseHandler implements CacheInterface
     /**
      * @inheritDoc
      */
-    abstract public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool;
+    abstract public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool;
 
     /**
      * @inheritDoc
@@ -209,7 +209,7 @@ abstract class BaseHandler implements CacheInterface
      *
      * @param iterable<string, mixed> $values
      */
-    public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
+    public function setMultiple(iterable $values, int|DateInterval|null $ttl = null): bool
     {
         $result = true;
         foreach ($values as $key => $value) {
@@ -254,7 +254,7 @@ abstract class BaseHandler implements CacheInterface
             throw new InvalidArgumentException(\sprintf(
                 'The cache key "%s" contains a reserved character. The following are reserved: %s',
                 $key,
-                self::RESERVED_CHARACTERS
+                self::RESERVED_CHARACTERS,
             ));
         }
 
@@ -285,7 +285,7 @@ abstract class BaseHandler implements CacheInterface
      * @param null|int|DateInterval $ttl
      * @return int|null
      */
-    protected function ttlToSeconds(null|int|DateInterval $ttl): ?int
+    protected function ttlToSeconds(int|DateInterval|null $ttl): ?int
     {
         if ($ttl === null) {
             return null;

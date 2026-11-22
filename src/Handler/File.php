@@ -58,7 +58,7 @@ class File extends BaseHandler
      */
     protected array $handlerOptions = [
         'path' => null,
-        'mode' => 0640,
+        'mode' => 0o640,
     ];
 
     /**
@@ -74,7 +74,7 @@ class File extends BaseHandler
     /**
      * @inheritDoc
      */
-    public function set(string $key, mixed $value, null|int|DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|DateInterval|null $ttl = null): bool
     {
         $name = $this->name($key);
         $seconds = $this->ttlToSeconds($ttl);
@@ -147,7 +147,7 @@ class File extends BaseHandler
         if (@file_put_contents($path, $content) === false) {
             return false;
         }
-        $mode = $this->getOption('mode', 0640);
+        $mode = $this->getOption('mode', 0o640);
         if (\is_int($mode)) {
             @chmod($path, $mode);
         }

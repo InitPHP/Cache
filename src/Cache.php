@@ -57,7 +57,7 @@ final class Cache
 
         throw new CacheException(\sprintf(
             'The cache handler must implement %s.',
-            CacheInterface::class
+            CacheInterface::class,
         ));
     }
 }
