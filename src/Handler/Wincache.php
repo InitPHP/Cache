@@ -27,8 +27,9 @@ use function wincache_ucache_set;
 /**
  * WinCache user-cache handler (Windows + the WinCache extension only).
  *
- * @deprecated The WinCache extension is unmaintained and not available for
- *             PHP 8. The handler is kept for backward compatibility; prefer
+ * @deprecated The WinCache extension is barely maintained: the only build for
+ *             PHP 8.1+ (PECL 2.0.0.9) is a beta and there is no stable
+ *             release. The handler is kept for backward compatibility; prefer
  *             {@see File}, {@see Redis} or {@see Memcache} on modern stacks.
  *
  * Options:
