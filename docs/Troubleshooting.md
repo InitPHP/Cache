@@ -8,7 +8,8 @@ version, handler and a minimal reproduction.
 
 **Cause:** you built a handler whose extension isn't loaded (e.g.
 [Redis](Redis-Handler.md) without `ext-redis`, [Memcache](Memcache-Handler.md) without
-`ext-memcached`/`ext-memcache`, or [WinCache](WinCache-Handler.md) on PHP 8).
+`ext-memcached`/`ext-memcache`, or [WinCache](WinCache-Handler.md) when it is not installed, which is the usual
+case on PHP 8).
 
 **Fix:** install/enable the extension, or pre-check and fall back:
 

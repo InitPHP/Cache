@@ -6,8 +6,8 @@
 - **You already run a database, no extra service wanted:** [PDO](PDO-Handler.md).
 - **Hot, shared cache across servers:** [Redis](Redis-Handler.md) or
   [Memcache(d)](Memcache-Handler.md).
-- **WinCache:** don't — it's [deprecated](WinCache-Handler.md) and unavailable on
-  PHP 8.
+- **WinCache:** don't — it's [deprecated](WinCache-Handler.md), unmaintained, and has
+  no stable release for PHP 8.
 
 See the comparison table on the [Home](Home.md#the-handlers-at-a-glance) page.
 

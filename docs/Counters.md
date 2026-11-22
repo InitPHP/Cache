@@ -100,4 +100,4 @@ phpredis `INCR` + `EXPIRE`.
 
 - [Keys, TTL & Values](Keys-TTL-and-Values.md) — how TTLs and values behave.
 - [Recipes](Recipes.md) — more practical patterns.
-- [API Reference](API-Reference.md#increment) — the method signatures.
+- [API Reference](API-Reference.md#initphp-extensions) — the method signatures.

@@ -1,7 +1,9 @@
 # WinCache Handler
 
-> ⚠️ **Deprecated.** The WinCache extension is unmaintained and is **not
-> available for PHP 8**. This handler is kept only for backward compatibility.
+> ⚠️ **Deprecated.** The WinCache extension is no longer a supported
+> Microsoft product and has **no stable release for PHP 8**; only an unsupported
+> beta (2.0.0.9, best-effort maintenance) builds on PHP 8.1 and later. This
+> handler is kept only for backward compatibility.
 > On any modern stack use [File](File-Handler.md), [Redis](Redis-Handler.md) or
 > [Memcache(d)](Memcache-Handler.md) instead.
 
@@ -48,9 +50,9 @@ extension_loaded('wincache') && ini_get('wincache.ucenabled'); // must be true
 ```
 
 Constructing the handler in an unsupported environment throws a
-[`CacheException`](Error-Handling.md) — which, since the extension does not exist on
-PHP 8, is what you will get on any current runtime. Build a different handler
-instead.
+[`CacheException`](Error-Handling.md) — which is what you will get on any runtime
+where the extension is not installed and enabled (there is no stable WinCache
+release for PHP 8). Build a different handler instead.
 
 ## Next steps
 
