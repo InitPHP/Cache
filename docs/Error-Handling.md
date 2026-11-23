@@ -119,9 +119,16 @@ try {
     $cache = Cache::create(Redis::class, ['host' => 'redis.internal']);
     $cache->has('ping'); // force the lazy connection now, so we fail fast
 } catch (CacheException $e) {
-    $cache = Cache::create(File::class, ['path' => sys_get_temp_dir() . '/cache']);
+    // A directory that belongs to the application, not a shared one such as
+    // sys_get_temp_dir(): the File handler unserialize()s what it finds there.
+    $cache = Cache::create(File::class, ['path' => __DIR__ . '/var/cache']);
 }
 ```
+
+Do not point the `File` fallback at `/tmp` or any other directory other users can
+write to. Another local user could pre-create it and plant a file in it, and
+the handler would deserialize that file. Keep the directory owned by the
+application user (mode `0700`); see [File Handler](File-Handler.md#usage).
 
 ## Next steps
 

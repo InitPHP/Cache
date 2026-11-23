@@ -69,9 +69,9 @@ config) and when you want a single place that validates the class.
 Option keys are normalised to lower case, so these are all the same option:
 
 ```php
-Cache::create(File::class, ['PATH' => '/tmp/cache']);
-Cache::create(File::class, ['Path' => '/tmp/cache']);
-Cache::create(File::class, ['path' => '/tmp/cache']);
+Cache::create(File::class, ['PATH' => __DIR__ . '/var/cache']);
+Cache::create(File::class, ['Path' => __DIR__ . '/var/cache']);
+Cache::create(File::class, ['path' => __DIR__ . '/var/cache']);
 ```
 
 Options you don't set fall back to the handler's defaults (and the shared

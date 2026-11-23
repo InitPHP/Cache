@@ -84,14 +84,21 @@ function fetchJson(CacheInterface $cache, string $url, int $ttl = 600): array
 
 ## Fragment caching (rendered HTML)
 
+A fragment that depends on the current user must be cached **per user**: put the
+user's id in the key. A fixed key such as `frag_nav` would serve the first user's
+menu, name and any tokens in it to everyone until the entry expires.
+
 ```php
-function renderNav(CacheInterface $cache, callable $render): string
+function renderNav(CacheInterface $cache, int $userId, callable $render): string
 {
-    return remember($cache, 'frag_nav', 600, $render);
+    return remember($cache, 'frag_nav_' . $userId, 600, $render);
 }
 
-echo renderNav($cache, fn () => view('partials/nav', ['user' => $user]));
+echo renderNav($cache, $user->id, fn () => view('partials/nav', ['user' => $user]));
 ```
+
+Only fragments that are identical for every visitor (a footer, a public
+category list) may use a fixed key.
 
 ## Pick a backend per environment
 
