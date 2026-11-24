@@ -30,7 +30,7 @@ an empty one).
 
 ```php
 $dir = __DIR__ . '/var/cache';
-is_dir($dir) || mkdir($dir, 0775, true);
+is_dir($dir) || mkdir($dir, 0700, true); // private to the application
 $cache = Cache::create(File::class, ['path' => $dir]);
 ```
 

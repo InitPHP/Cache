@@ -50,7 +50,7 @@ use InitPHP\Cache\Cache;
 use InitPHP\Cache\Handler\File;
 
 $dir = __DIR__ . '/var/cache';
-@mkdir($dir, 0775, true);
+@mkdir($dir, 0700, true); // private to the application: cache files are unserialized
 
 $cache = Cache::create(File::class, ['path' => $dir]);
 

@@ -89,12 +89,13 @@ user's id in the key. A fixed key such as `frag_nav` would serve the first user'
 menu, name and any tokens in it to everyone until the entry expires.
 
 ```php
-function renderNav(CacheInterface $cache, int $userId, callable $render): string
+function renderNav(CacheInterface $cache, ?int $userId, callable $render): string
 {
-    return remember($cache, 'frag_nav_' . $userId, 600, $render);
+    // $userId is null for a guest, who gets one shared "guest" fragment.
+    return remember($cache, 'frag_nav_' . ($userId ?? 'guest'), 600, $render);
 }
 
-echo renderNav($cache, $user->id, fn () => view('partials/nav', ['user' => $user]));
+echo renderNav($cache, $user?->id, fn () => view('partials/nav', ['user' => $user]));
 ```
 
 Only fragments that are identical for every visitor (a footer, a public
