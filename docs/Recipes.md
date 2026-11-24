@@ -91,7 +91,8 @@ menu, name and any tokens in it to everyone until the entry expires.
 ```php
 function renderNav(CacheInterface $cache, ?int $userId, callable $render): string
 {
-    // $userId is null for a guest, who gets one shared "guest" fragment.
+    // $userId is null for a guest, who gets one shared "guest" fragment: the guest
+    // fragment must not contain a CSRF token or other per-session data.
     return remember($cache, 'frag_nav_' . ($userId ?? 'guest'), 600, $render);
 }
 
