@@ -79,7 +79,7 @@ final class PriceServiceFileTest extends TestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/cache-test-' . uniqid();
-        mkdir($this->dir);
+        mkdir($this->dir, 0700);
         $this->cache = Cache::create(File::class, ['path' => $this->dir]);
     }
 

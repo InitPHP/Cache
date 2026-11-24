@@ -34,11 +34,17 @@ A quick bootstrap:
 ```php
 $dir = __DIR__ . '/var/cache';
 if (!is_dir($dir)) {
-    mkdir($dir, 0775, true);
+    mkdir($dir, 0700, true);
 }
 
 $cache = Cache::create(File::class, ['path' => $dir]);
 ```
+
+> **Security:** use a directory that belongs to the application (owned by the
+> web/CLI user, mode `0700`), never `/tmp` or another location other users can
+> write to. Cache files are PHP-`serialize()`d and read back with `unserialize()`,
+> so a file planted by someone else becomes a deserialization input. Keep the
+> directory outside the web root as well.
 
 If `path` is missing or empty, any operation that touches the filesystem throws a
 [`CacheException`](Error-Handling.md).
